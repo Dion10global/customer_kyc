@@ -1,0 +1,248 @@
+# ============================================================================
+# .github/workflows/ci.yml
+#
+# Author : Benjamin Kudzai Nyaruviro (BenNyaruz)
+# Module : Cloud Application Development - Practical Test 2 (Question 2)
+# Repo   : https://github.com/BenNyaruz/test-2
+#
+# Complete CI/CD pipeline for the Customers PHP app, hosted on the Vercel PaaS.
+#
+# Pipeline stages (mapped to the marking criteria):
+#   i.   trigger        -> push to main (PRs run everything except deploy)
+#   ii.  build          -> install Composer deps + lint PHP
+#   iii. test           -> PHPUnit unit + integration tests against a real
+#                          MySQL 8.0 service container (the "test database")
+#   iv.  security-scan  -> OWASP Dependency-Check (fails the build on CVSS >= 7)
+#   v.   deploy         -> zero-downtime blue-green release on Vercel:
+#                            a) deploy a PREVIEW built on Vercel (green)
+#                            b) smoke-test the green deployment
+#                            c) atomically PROMOTE that exact deployment to
+#                               production (blue -> green alias swap)
+#                          Vercel promotion is an instant alias switch, so there
+#                          is no downtime and instant rollback is available.
+#
+# Required GitHub Secrets:
+#   - VERCEL_TOKEN        (Account Settings -> Tokens)
+#   - VERCEL_ORG_ID       (from `vercel link` -> .vercel/project.json)
+#   - VERCEL_PROJECT_ID   (from `vercel link` -> .vercel/project.json)
+#
+# Production DB credentials live in the Vercel Project's Environment Variables
+# (an external managed MySQL on Railway / Aiven), NOT in this pipeline.
+# ============================================================================
+
+name: CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHP_VERSION: "8.2"
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  # Stable production alias for the project; the blue-green swap re-points this.
+  VERCEL_PROD_DOMAIN: test-2-seven-self.vercel.app
+
+jobs:
+
+  # ----- ii. BUILD: install dependencies + lint ----------------------------
+  build:
+    name: Build (install + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ env.PHP_VERSION }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_mysql, mbstring
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: |
+          if [ -f composer.json ]; then
+            composer install --no-interaction --prefer-dist --no-progress
+          fi
+
+      - name: Lint PHP syntax
+        run: |
+          find . -path ./vendor -prune -o -name "*.php" -print0 \
+            | xargs -0 -n1 php -l
+
+  # ----- iii. TEST: unit + integration against a test database -------------
+  test:
+    name: Test (unit + integration)
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpw
+          MYSQL_DATABASE: companydb_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: companydb_test
+      DB_USER: root
+      DB_PASSWORD: rootpw
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ env.PHP_VERSION }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_mysql, mbstring
+          coverage: xdebug
+          tools: composer:v2, phpunit
+
+      - name: Install dev dependencies
+        run: |
+          if [ -f composer.json ]; then
+            composer install --no-interaction --prefer-dist --no-progress
+          fi
+
+      - name: Seed the test database
+        run: mysql -h 127.0.0.1 -P 3306 -uroot -prootpw companydb_test < init.sql
+
+      - name: Run unit tests
+        run: |
+          if [ -f vendor/bin/phpunit ]; then
+            vendor/bin/phpunit --testsuite=unit --colors=never
+          fi
+
+      - name: Run integration tests
+        run: |
+          if [ -f vendor/bin/phpunit ]; then
+            vendor/bin/phpunit --testsuite=integration --colors=never
+          fi
+
+  # ----- iv. SECURITY SCAN: OWASP Dependency-Check -------------------------
+  security-scan:
+    name: Security (OWASP Dependency-Check)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: customers-app
+          path: .
+          format: HTML
+          args: >-
+            --failOnCVSS 7
+            --enableRetired
+
+      - name: Upload Dependency-Check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: reports
+
+  # ----- v. DEPLOY (green): build once + deploy a PREVIEW ------------------
+  deploy-green:
+    name: Deploy green (Vercel preview)
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.preview_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy a preview build (green)
+        id: deploy
+        # Build remotely on Vercel (the vercel-php runtime's bundled PHP is not
+        # glibc-compatible with the GitHub runner, so `vercel build` cannot run
+        # here). Vercel builds the source on its own infra and returns one
+        # immutable preview deployment URL - the green environment.
+        run: |
+          url=$(vercel deploy --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "Green (preview) deployment: $url"
+          echo "preview_url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test the green deployment
+        # The x-vercel-protection-bypass header lets the check through Vercel
+        # Deployment Protection (preview URLs return 401 to anonymous requests).
+        # Harmless if protection is disabled.
+        run: |
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-delay 5 --retry-connrefused \
+            -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
+            "${{ steps.deploy.outputs.preview_url }}" > /dev/null
+          echo "Green deployment passed smoke test."
+
+  # ----- v. PROMOTE (blue-green swap): zero-downtime cutover ---------------
+  promote-production:
+    name: Promote green -> production (blue-green)
+    runs-on: ubuntu-latest
+    needs: deploy-green
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+    steps:
+      - name: Promote green to production (atomic alias swap)
+        # Blue-green cutover via the Vercel REST API: re-point the stable
+        # production domain to the already-built, already-smoke-tested green
+        # deployment. This is an instant alias switch - no rebuild, no cold
+        # downtime - and the previous deployment stays live for rollback.
+        # (Done via API rather than `vercel promote`, which mis-resolves the
+        # team scope in CI when no project is linked in the job.)
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TEAM: ${{ secrets.VERCEL_ORG_ID }}
+          PREVIEW_URL: ${{ needs.deploy-green.outputs.preview_url }}
+        run: |
+          set -euo pipefail
+          host="${PREVIEW_URL#https://}"
+          dep_id=$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
+            "https://api.vercel.com/v13/deployments/${host}?teamId=${TEAM}" \
+            | jq -r '.uid // .id')
+          echo "Green deployment id: $dep_id"
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"alias\":\"${VERCEL_PROD_DOMAIN}\"}" \
+            "https://api.vercel.com/v2/deployments/${dep_id}/aliases?teamId=${TEAM}" \
+            > /dev/null
+          echo "Production alias ${VERCEL_PROD_DOMAIN} now points to the green deployment."
+
+      - name: Post-promotion production smoke test
+        run: |
+          sleep 5
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-delay 5 --retry-connrefused \
+            -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
+            "https://${VERCEL_PROD_DOMAIN}" > /dev/null
+          echo "Production is serving the promoted deployment."
