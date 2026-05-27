@@ -238,7 +238,7 @@ jobs:
             > /dev/null
           echo "Production alias ${VERCEL_PROD_DOMAIN} now points to the green deployment."
 
-      - name: Post-promotion production smoke test
+      - name: Post-promotion production smoke tests
         run: |
           sleep 5
           curl --fail --show-error --silent --location \
