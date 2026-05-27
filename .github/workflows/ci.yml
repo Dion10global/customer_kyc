@@ -189,7 +189,7 @@ jobs:
         # here). Vercel builds the source on its own infra and returns one
         # immutable preview deployment URL - the green environment.
         run: |
-          url=$(vercel deploy --token="${{ secrets.VERCEL_TOKEN }}")
+          url=$(vercel deploy --yes --token="${{ secrets.VERCEL_TOKEN }}")
           echo "Green (preview) deployment: $url"
           echo "preview_url=$url" >> "$GITHUB_OUTPUT"
 
