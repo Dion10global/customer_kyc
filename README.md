@@ -1,9 +1,9 @@
 # Customers App
 
-**Author:** Benjamin Kudzai Nyaruviro ([@BenNyaruz](https://github.com/BenNyaruz))
+**Author:** Dion Farley ([@Dion10global](https://github.com/Dion10global))
 **Module:** Cloud Application Development
 **Task:** Practical Test 2 (Questions 1 and 2)
-**Repository:** <https://github.com/BenNyaruz/test-2>
+**Repository:** <https://github.com/Dion10global/customer_kyc>
 
 A PHP application that lists customer records from a MySQL database using PDO
 with prepared statements. Deployed on the Vercel PaaS via the `vercel-php`

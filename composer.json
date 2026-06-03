@@ -1,14 +1,14 @@
 {
-  "name": "bennyaruz/customers-app",
+  "name": " Dion10global/customer_kyc",
   "description": "Cloud Application Development - Practical Test 2: PHP/PDO customer list",
   "type": "project",
   "license": "MIT",
-  "homepage": "https://github.com/BenNyaruz/customers-app",
+  "homepage": "https://github.com/Dion10global/customer_kyc",
   "authors": [
     {
-      "name":     "Benjamin Kudzai Nyaruviro",
-      "email":    "bennyaruviro@gmail.com",
-      "homepage": "https://github.com/BenNyaruz",
+      "name":     "Dion Farley",
+      "email":    "dionfarley10@gmail.com",
+      "homepage": "https://github.com/Dion10global",
       "role":     "Developer"
     }
   ],

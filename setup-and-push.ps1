@@ -11,11 +11,11 @@
 # with -GitHubUser / -RepoName / -Visibility if you ever reuse this script.
 # ============================================================================
 param(
-    [string]$GitHubUser = "BenNyaruz",
-    [string]$RepoName   = "customers-app",
+    [string]$GitHubUser = "Dion Farley",
+    [string]$RepoName   = "customers_kyc",
     [string]$Visibility = "public",
-    [string]$UserName   = "Benjamin Kudzai Nyaruviro",
-    [string]$UserEmail  = "bennyaruviro@gmail.com"
+    [string]$UserName   = "Dion10global",
+    [string]$UserEmail  = "dionfarley10@gmail.com"
 )
 
 $ErrorActionPreference = "Stop"

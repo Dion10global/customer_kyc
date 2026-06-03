@@ -4,12 +4,7 @@ declare(strict_types=1);
 /**
  * customers.php
  *
- * Author : Benjamin Kudzai Nyaruviro (BenNyaruz)
- * GitHub : https://github.com/BenNyaruz
- * Email  : bennyaruviro@gmail.com
- * Module : Cloud Application Development
- * Task   : Practical Test 2 - Question 1
- *
+
  * Lists all customer records from a MySQL "customers" table using PDO with
  * prepared statements and renders the result as a styled HTML table.
  *
@@ -137,7 +132,7 @@ function render_error_page(string $title, string $message): void {
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="author" content="Benjamin Kudzai Nyaruviro">
+    <meta name="author" content="Dion Farley">
     <title>Customer Records</title>
     <style>
         :root {
@@ -181,7 +176,7 @@ function render_error_page(string $title, string $message): void {
     <header>
         <h1>Customer Records</h1>
         <p class="meta">
-            Author: Benjamin Kudzai Nyaruviro (<a href="https://github.com/BenNyaruz">@BenNyaruz</a>) &middot;
+            Author: Dion Farley (<a href="https://github.com/Dion10global">@Dion Farley</a>) &middot;
             Generated <?= e(date('Y-m-d H:i')) ?> &middot;
             <?= (int) count($customers) ?> record(s)
         </p>
@@ -210,7 +205,7 @@ function render_error_page(string $title, string $message): void {
     </section>
 
     <footer>
-        &copy; <?= e(date('Y')) ?> Benjamin Kudzai Nyaruviro &middot; Cloud Application Development &middot; Practical Test 2
+        &copy; <?= e(date('Y')) ?> Dion Farley &middot; Cloud Application Development &middot; Practical Test 2
     </footer>
 </body>
 </html>
